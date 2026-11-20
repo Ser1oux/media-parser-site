@@ -1,0 +1,16 @@
+services:
+  parser:
+    build: .
+    container_name: parser-site
+    ports:
+      # 容器只监听本机，由 Caddy 接管 80/443 并做 HTTPS 反代
+      - "127.0.0.1:8080:8000"
+    env_file: .env
+    restart: unless-stopped
+    # 抖音 CDP 兜底要跑无头 Chromium
+    shm_size: "1gb"
+    # 容器经 host-gateway 访问宿主机上的 sing-box 代理（PROXY_OVERSEAS=http://host.docker.internal:7890）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - UVICORN_WORKERS=1

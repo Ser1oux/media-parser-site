@@ -1,0 +1,99 @@
+# parser-site · Caddy 配置模板
+#
+# 部署：把下面的 example.com 换成你的域名后写入 /etc/caddy/Caddyfile，
+#       然后 systemctl reload caddy —— Caddy 会自动申请/续期 Let's Encrypt 证书。
+#
+# 站点分配（示例）：
+#   parser.example.com     → 解析下载站（127.0.0.1:8080）
+#   example.com / www       → 同一个解析站（或换成你的博客等其它服务）
+#   blog.example.com       → 另一个服务（示例：博客 127.0.0.1:3000）
+#
+# 注意：**每个解析到本机的子域都必须在这里显式配置**。
+# Caddy 对未配置的主机名会直接握手失败（TLS internal error），浏览器表现为
+# "无法访问此网站 / ERR_SSL_PROTOCOL_ERROR"，而不是 404 —— 很容易被误判成服务挂了。
+#
+# 依赖：应用容器只监听本机端口（见 docker-compose.yml），公网 80/443 由 Caddy 统一接管。
+# 证书用 tls-alpn-01 挑战（走 443 验证），不依赖 80 端口是否可对外。
+
+{
+	email admin@example.com
+}
+
+# ---------- 解析下载站 ----------
+(parser_site) {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		transport http {
+			read_timeout 0s
+			write_timeout 0s
+			dial_timeout 15s
+		}
+	}
+	# 下载/图片接口是大文件实时流：不缓冲、不超时
+	@stream path /api/download* /api/image*
+	handle @stream {
+		reverse_proxy 127.0.0.1:8080 {
+			flush_interval -1
+			header_up X-Real-IP {remote_host}
+		}
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	log {
+		output file /var/log/caddy/parser-site.log
+		format json
+	}
+}
+
+# ---------- 另一个服务（示例：博客） ----------
+(blog_site) {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	log {
+		output file /var/log/caddy/blog.log
+		format json
+	}
+}
+
+parser.example.com {
+	import parser_site
+}
+
+example.com {
+	import parser_site
+}
+
+www.example.com {
+	import parser_site
+}
+
+# 另一个服务的示例（博客等）
+blog.example.com {
+	import blog_site
+}
+
+# IP 直连兜底：DNS 解析异常 / 代理客户端路由出问题时，还能用 http://<服务器IP> 访问。
+# 注意：域名站的 HTTP→HTTPS 跳转不受影响（同名站点优先匹配）。
+:80 {
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Real-IP {remote_host}
+		transport http {
+			read_timeout 0s
+			write_timeout 0s
+		}
+	}
+}

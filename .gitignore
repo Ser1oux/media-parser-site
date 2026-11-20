@@ -1,0 +1,19 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+downloads/
+*.log
+.deploy.env
+
+# 服务器专用运维文件（含 IP / 密钥），不进仓库
+scripts/aliyun.pem
+scripts/deploy_ssh.py
+scripts/deploy_key*
+*.tar.gz
+scripts/probe_ig*.py
+scripts/probe_*.py
+scripts/probe_*.py
+.ui-proto/
